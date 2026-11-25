@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Órbita de Rescate - Simulador MCU</title>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  body {
+    margin: 0; background: #030612; color: #f5f8ff;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+  }
+  #hud-superior {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; background: #0a1126; border-bottom: 1px solid #325a82;
+    font-size: 0.82rem; font-weight: 700;
+  }
+  .badge { padding: 3px 8px; border-radius: 8px; background: #0f285a; color: #3ce1ff; }
+  #telemetria {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    padding: 6px 10px; background: #070d20; font-family: monospace;
+    font-size: 0.75rem; text-align: center; border-bottom: 1px solid #1e3554;
+  }
+  #telemetria div span { display: block; color: #91a0b9; font-size: 0.65rem; }
+  #objetivos {
+    display: flex; justify-content: space-around; padding: 5px 10px;
+    background: #0a1126; font-size: 0.78rem; border-bottom: 1px solid #1e3554;
+  }
+  .ok { color: #46eb8c; font-weight: bold; }
+  .bad { color: #f5465a; font-weight: bold; }
+  #contenedor-canvas { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #mensaje-barra {
+    position: absolute; bottom: 8px; left: 10px; right: 10px;
+    background: rgba(8, 15, 32, 0.88); border: 1px solid #325a82;
+    border-radius: 10px; padding: 6px 12px; font-size: 0.8rem; text-align: center; color: #ffdc46;
+  }
+  #controles {
+    display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px;
+    padding: 10px; background: #0a1126; border-top: 1px solid #325a82; height: 145px;
+  }
+  .col-btn { display: flex; flex-direction: column; gap: 8px; }
+  button {
+    flex: 1; border: 2px solid #325a82; border-radius: 14px;
+    background: #0f1d42; color: #f5f8ff; font-weight: 700; font-size: 0.92rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  button small { font-size: 0.68rem; font-weight: 400; color: #91a0b9; }
+  button:active, button.activo { background: #2878dc; border-color: #3ce1ff; transform: scale(0.97); }
+  .btn-acoplar { background: #145c38; border-color: #46eb8c; color: #46eb8c; font-size: 1rem; }
+  .btn-graf { background: #2a1859; border-color: #b464ff; color: #e0baff; font-size: 0.8rem; }
+
+  /* Pantalla superpuesta (Menu / Resultado / Graficas) */
+  .overlay {
+    position: absolute; inset: 0; background: rgba(3, 6, 18, 0.94);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 18px; text-align: center; z-index: 10; overflow-y: auto;
+  }
+  .oculto { display: none !important; }
+  h1 { color: #ffdc46; margin: 0 0 6px; font-size: 1.7rem; }
+  h2 { color: #3ce1ff; margin: 0 0 10px; font-size: 1.2rem; }
+  .btn-grande {
+    width: 85%; max-width: 320px; padding: 15px; margin: 8px 0;
+    border-radius: 16px; font-size: 1.1rem; flex: none;
+  }
+  .grid-graficas {
+    display: grid; grid-template-columns: 1fr; gap: 12px;
+    width: 100%; max-width: 500px; margin: 10px 0;
+  }
+  .card-graf {
+    background: #0a1126; border: 1px solid #325a82; border-radius: 12px; padding: 8px;
+  }
+  .card-graf p { margin: 0 0 6px; font-size: 0.78rem; color: #3ce1ff; font-weight: bold; }
+  .card-graf canvas { height: 140px; width: 100%; background: #050a1a; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div id="hud-superior">
+  <span class="badge" id="lbl-nivel">NIVEL 1/5</span>
+  <span id="lbl-vidas">❤️❤️❤️</span>
+  <span class="badge" id="lbl-tiempo">90 s</span>
+  <span class="badge" style="color:#46eb8c" id="lbl-puntos">0/700</span>
+</div>
+
+<div id="telemetria">
+  <div><span>Radio (r)</span><b id="val-r">100.0 m</b></div>
+  <div><span>Periodo (T)</span><b id="val-t">60.00 s</b></div>
+  <div><span>Vel. Ang (ω)</span><b id="val-w">0.105 rad/s</b></div>
+  <div><span>Vel. Tan (v)</span><b id="val-v">10.47 m/s</b></div>
+</div>
+
+<div id="objetivos">
+  <span id="obj-r" class="ok">● Radio: 95 - 105 m</span>
+  <span id="obj-t" class="ok">● Periodo: 58 - 62 s</span>
+</div>
+
+<div id="contenedor-canvas">
+  <canvas id="juego"></canvas>
+  <div id="mensaje-barra">Ajusta la órbita y acopla la nave en la ventana verde.</div>
+
+  <!-- MENU PRINCIPAL -->
+  <div id="pantalla-menu" class="overlay">
+    <h1>ÓRBITA DE RESCATE</h1>
+    <h2>Simulador Móvil de Movimiento Circular Uniforme</h2>
+    <p style="color:#91a0b9; font-size:0.9rem; max-width:340px;">
+      Ajusta el radio orbital y el periodo para igualar la órbita de la Estación Espacial sin chocar con asteroides.
+    </p>
+    <button class="btn-grande" style="background:#1c64c8; border-color:#3ce1ff;" onclick="iniciarJuego()">JUGAR AHORA</button>
+  </div>
+
+  <!-- PANTALLA RESULTADOS -->
+  <div id="pantalla-resultado" class="overlay oculto">
+    <h1 id="res-titulo">¡NIVEL COMPLETADO!</h1>
+    <p id="res-subtitulo" style="font-size:1rem; margin:4px 0;"></p>
+    <h2 id="res-puntos" style="color:#ffdc46; margin:12px 0;">PUNTUACIÓN: 0</h2>
+    <p id="res-detalle" style="color:#91a0b9; font-size:0.85rem;"></p>
+    <button class="btn-grande btn-graf" onclick="abrirGraficas()">📊 GRAFICAR FUNCIONES (DATOS FINALES)</button>
+    <button class="btn-grande btn-acoplar" id="btn-siguiente" onclick="siguienteAccionResultado()">CONTINUAR</button>
+  </div>
+
+  <!-- PANTALLA GRAFICAS -->
+  <div id="pantalla-graficas" class="overlay oculto" style="justify-content:flex-start;">
+    <h2 style="margin-top:6px;">ANÁLISIS GRÁFICO MCU (DATOS FINALES)</h2>
+    <p id="graf-resumen" style="font-size:0.75rem; color:#ffdc46; margin:0 0 8px;"></p>
+    <div class="grid-graficas">
+      <div class="card-graf">
+        <p>1. Velocidad Angular ω(T) = 2π / T</p>
+        <canvas id="g-omega"></canvas>
+      </div>
+      <div class="card-graf">
+        <p>2. Velocidad Tangencial v(r) = ω_final · r</p>
+        <canvas id="g-vel"></canvas>
+      </div>
+      <div class="card-graf">
+        <p>3. Proyección Armónica x(t)=r·cos(ωt) y y(t)=r·sin(ωt)</p>
+        <canvas id="g-arm"></canvas>
+      </div>
+      <div class="card-graf">
+        <p>4. Telemetría Real de Partida: r(t) [Morado] y v(t) [Verde]</p>
+        <canvas id="g-hist"></canvas>
+      </div>
+    </div>
+    <button class="btn-grande" style="background:#1c64c8;" onclick="cerrarGraficas()">VOLVER</button>
+  </div>
+</div>
+
+<div id="controles">
+  <div class="col-btn">
+    <button id="btn-up">▲ RADIO +<small>Alejar</small></button>
+    <button id="btn-down">▼ RADIO -<small>Acercar</small></button>
+  </div>
+  <div class="col-btn">
+    <button class="btn-acoplar" onclick="intentarAcoplamiento()">ACOPLAR<small>En ventana</small></button>
+    <button class="btn-graf" onclick="abrirGraficas()">📊 GRAFICAR</button>
+  </div>
+  <div class="col-btn">
+    <button id="btn-left">◄ PERIODO -<small>Más rápido</small></button>
+    <button id="btn-right">► PERIODO +<small>Más lento</small></button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('juego');
+const ctx = canvas.getContext('2d');
+
+// Audio sintetizado Web Audio API (sin archivos externos)
+let audioCtx = null;
+function sonar(freq, tipo, dur) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = tipo;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+const RADIO_OBJETIVO = 100.0;
+const TOL_RADIO = 5.0;
+const TOL_PERIODO = 2.0;
+const PERIODOS_OBJETIVO = { 1: 60.0, 2: 50.0, 3: 40.0, 4: 30.0, 5: 20.0 };
+const TOTAL_NIVELES = 5;
+
+let estado = 'MENU';
+let estadoPrevio = 'MENU';
+let nivel = 1;
+let radio = 100.0;
+let periodo = 60.0;
+let angulo = 0.0;
+let vidas = 3;
+let tiempo = 90.0;
+let puntosAprox = 0.0;
+let puntosTotal = 0;
+let ciclosFallidos = 0;
+let ultimoCiclo = 0;
+let historial = [];
+let acumMuestreo = 0;
+let asteroides = [];
+let estrellas = Array.from({length: 90}, () => ({
+  x: Math.random(), y: Math.random(), r: Math.random() > 0.8 ? 2 : 1
+}));
+
+const hold = { up: false, down: false, left: false, right: false };
+['up', 'down', 'left', 'right'].forEach(id => {
+  const el = document.getElementById('btn-' + id);
+  const on = (e) => { e.preventDefault(); el.classList.add('activo'); hold[id] = true; };
+  const off = (e) => { e.preventDefault(); el.classList.remove('activo'); hold[id] = false; };
+  el.addEventListener('touchstart', on, {passive: false});
+  el.addEventListener('touchend', off, {passive: false});
+  el.addEventListener('touchcancel', off, {passive: false});
+  el.addEventListener('mousedown', on);
+  el.addEventListener('mouseup', off);
+  el.addEventListener('mouseleave', off);
+});
+
+function generarAsteroides() {
+  asteroides = [];
+  const cant = 6 + nivel * 4;
+  for (let i = 0; i < cant; i++) {
+    asteroides.push({
+      ang: Math.random() * Math.PI * 2,
+      rad: 68 + Math.random() * 75,
+      vel: 0.12 + Math.random() * 0.16 + (nivel - 1) * 0.025,
+      tam: 5 + Math.random() * 5
+    });
+  }
+}
+
+function setMensaje(txt) { document.getElementById('mensaje-barra').textContent = txt; }
+
+function iniciarJuego() {
+  nivel = 1; puntosTotal = 0;
+  document.getElementById('pantalla-menu').classList.add('oculto');
+  prepararNivel();
+}
+
+function prepararNivel() {
+  radio = 100.0; periodo = 60.0; angulo = 0.0;
+  vidas = 3; tiempo = Math.max(45, 90 - (nivel - 1) * 5);
+  puntosAprox = 0; ciclosFallidos = 0; ultimoCiclo = 0;
+  historial = []; acumMuestreo = 0;
+  generarAsteroides();
+  setMensaje(`Nivel ${nivel}: ajusta Periodo a ${PERIODOS_OBJETIVO[nivel]} s y acopla.`);
+  estado = 'JUGANDO';
+}
+
+function intentarAcoplamiento() {
+  if (estado !== 'JUGANDO') return;
+  const pObj = PERIODOS_OBJETIVO[nivel];
+  const rOk = Math.abs(radio - RADIO_OBJETIVO) <= TOL_RADIO;
+  const tOk = Math.abs(periodo - pObj) <= TOL_PERIODO;
+
+  // Estacion en -pi/2 (arriba)
+  const navX = radio * Math.cos(angulo);
+  const navY = radio * Math.sin(angulo);
+  const dist = Math.hypot(navX - 0, navY - (-RADIO_OBJETIVO));
+
+  if (rOk && tOk && dist < 32) {
+    sonar(660, 'triangle', 0.4);
+    mostrarResultado(true);
+  } else {
+    vidas--;
+    sonar(140, 'sawtooth', 0.3);
+    if (!rOk) setMensaje(`Radio fuera de rango (${RADIO_OBJETIVO - TOL_RADIO}-${RADIO_OBJETIVO + TOL_RADIO} m).`);
+    else if (!tOk) setMensaje(`Periodo fuera de rango (${pObj - TOL_PERIODO}-${pObj + TOL_PERIODO} s).`);
+    else setMensaje('Espera a estar dentro de la ventana verde superior.');
+    if (vidas <= 0) mostrarResultado(false);
+  }
+}
+
+function mostrarResultado(victoria) {
+  estado = victoria ? 'VICTORIA' : 'DERROTA';
+  const bonus = vidas * 100;
+  const pen = ciclosFallidos * 100;
+  const ptsNivel = Math.max(0, Math.round(puntosAprox) + bonus - pen);
+  puntosTotal += ptsNivel;
+
+  document.getElementById('res-titulo').textContent = victoria
+    ? (nivel >= TOTAL_NIVELES ? '¡MISIÓN COMPLETADA!' : `¡NIVEL ${nivel} COMPLETADO!`)
+    : 'MISIÓN FALLIDA';
+  document.getElementById('res-titulo').style.color = victoria ? '#46eb8c' : '#f5465a';
+  document.getElementById('res-subtitulo').textContent = victoria
+    ? (nivel < TOTAL_NIVELES ? `Siguiente objetivo: T = ${PERIODOS_OBJETIVO[nivel + 1]} s` : 'Superaste los 5 niveles')
+    : 'La nave no logró el acoplamiento orbital.';
+  document.getElementById('res-puntos').textContent = `PUNTUACIÓN: ${ptsNivel} (Total: ${puntosTotal})`;
+  document.getElementById('res-detalle').textContent = `Aprox: ${Math.round(puntosAprox)} | Vidas: +${bonus} | Ciclos fallidos: -${pen}`;
+  document.getElementById('btn-siguiente').textContent = (victoria && nivel < TOTAL_NIVELES) ? 'SIGUIENTE NIVEL' : 'VOLVER AL MENÚ';
+  document.getElementById('pantalla-resultado').classList.remove('oculto');
+}
+
+function siguienteAccionResultado() {
+  document.getElementById('pantalla-resultado').classList.add('oculto');
+  if (estado === 'VICTORIA' && nivel < TOTAL_NIVELES) {
+    nivel++;
+    prepararNivel();
+  } else {
+    estado = 'MENU';
+    document.getElementById('pantalla-menu').classList.remove('oculto');
+  }
+}
+
+// ---------------- GRAFICAS DE FUNCIONES ----------------
+function abrirGraficas() {
+  if (estado === 'MENU') return;
+  estadoPrevio = estado;
+  estado = 'GRAFICAS';
+  document.getElementById('pantalla-graficas').classList.remove('oculto');
+  renderizarGraficas();
+}
+
+function cerrarGraficas() {
+  document.getElementById('pantalla-graficas').classList.add('oculto');
+  estado = estadoPrevio;
+}
+
+function dibujarCurva(canvasId, xs, ys, xMin, xMax, yMin, yMax, color, ptX = null, ptY = null, limpiar = true) {
+  const c = document.getElementById(canvasId);
+  c.width = c.clientWidth * 2; c.height = c.clientHeight * 2;
+  const g = c.getContext('2d');
+  const w = c.width, h = c.height, pad = 28;
+  if (limpiar) {
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = '#253b5e'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(pad, 10); g.lineTo(pad, h - pad); g.lineTo(w - 10, h - pad); g.stroke();
+  }
+  g.strokeStyle = color; g.lineWidth = 4; g.beginPath();
+  xs.forEach((x, i) => {
+    const px = pad + ((x - xMin) / (xMax - xMin)) * (w - pad - 15);
+    const py = (h - pad) - ((ys[i] - yMin) / (yMax - yMin)) * (h - pad - 15);
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  });
+  g.stroke();
+
+  if (ptX !== null && ptY !== null) {
+    const px = pad + ((ptX - xMin) / (xMax - xMin)) * (w - pad - 15);
+    const py = (h - pad) - ((ptY - yMin) / (yMax - yMin)) * (h - pad - 15);
+    g.fillStyle = '#ffdc46';
+    g.beginPath(); g.arc(px, py, 9, 0, Math.PI * 2); g.fill();
+  }
+}
+
+function renderizarGraficas() {
+  const omegaF = (2 * Math.PI) / periodo;
+  const velF = omegaF * radio;
+  document.getElementById('graf-resumen').textContent =
+    `r = ${radio.toFixed(1)} m | T = ${periodo.toFixed(2)} s | ω = ${omegaF.toFixed(4)} rad/s | v = ${velF.toFixed(2)} m/s`;
+
+  const ts = Array.from({length: 91}, (_, i) => 10 + i);
+  const ws = ts.map(t => (2 * Math.PI) / t);
+  dibujarCurva('g-omega', ts, ws, 10, 100, 0, 0.65, '#3ce1ff', periodo, omegaF, true);
+
+  const rs = Array.from({length: 101}, (_, i) => 50 + i);
+  const vs = rs.map(r => omegaF * r);
+  dibujarCurva('g-vel', rs, vs, 50, 150, 0, Math.max(15, omegaF * 155), '#46eb8c', radio, velF, true);
+
+  const tc = Array.from({length: 101}, (_, i) => (i / 100) * periodo);
+  dibujarCurva('g-arm', tc, tc.map(t => radio * Math.cos(omegaF * t)), 0, periodo, -155, 155, '#3ce1ff', null, null, true);
+  dibujarCurva('g-arm', tc, tc.map(t => radio * Math.sin(omegaF * t)), 0, periodo, -155, 155, '#ff9132', null, null, false);
+
+  if (historial.length >= 2) {
+    const idxs = historial.map((_, i) => i);
+    dibujarCurva('g-hist', idxs, historial.map(m => m.r), 0, idxs.length - 1, 0, 160, '#b464ff', null, null, true);
+    dibujarCurva('g-hist', idxs, historial.map(m => m.v), 0, idxs.length - 1, 0, 160, '#46eb8c', null, null, false);
+  }
+}
+
+// ---------------- BUCLE DE SIMULACION ----------------
+let lastTime = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+
+  if (estado === 'JUGANDO') {
+    if (hold.up) radio += 22 * dt;
+    if (hold.down) radio -= 22 * dt;
+    if (hold.right) periodo += 9 * dt;
+    if (hold.left) periodo -= 9 * dt;
+
+    radio = Math.max(50, Math.min(150, radio));
+    periodo = Math.max(10, Math.min(100, periodo));
+
+    const omega = (2 * Math.PI) / periodo;
+    const vel = omega * radio;
+    angulo += omega * dt;
+
+    acumMuestreo += dt;
+    if (acumMuestreo >= 0.25) {
+      acumMuestreo = 0;
+      historial.push({ r: radio, v: vel });
+      if (historial.length > 250) historial.shift();
+    }
+
+    const prog = Math.max(0, Math.min(1, angulo / (1.5 * Math.PI)));
+    puntosAprox = Math.max(puntosAprox, prog * 700);
+
+    const angSuperado = 1.5 * Math.PI + 0.2;
+    const navX = radio * Math.cos(angulo), navY = radio * Math.sin(angulo);
+    const distEst = Math.hypot(navX, navY + RADIO_OBJETIVO);
+    if (angulo >= angSuperado + ultimoCiclo * Math.PI * 2 && distEst > 32) {
+      ciclosFallidos++; ultimoCiclo++;
+    }
+
+    tiempo -= dt;
+    if (tiempo <= 0) { tiempo = 0; mostrarResultado(false); }
+
+    asteroides.forEach(a => {
+      a.ang += a.vel * dt;
+      const ax = a.rad * Math.cos(a.ang), ay = a.rad * Math.sin(a.ang);
+      if (Math.hypot(navX - ax, navY - ay) < a.tam + 7) {
+        vidas--; a.ang += Math.PI;
+        sonar(120, 'sawtooth', 0.35);
+        setMensaje('¡Impacto con asteroide!');
+        if (vidas <= 0) mostrarResultado(false);
+      }
+    });
+
+    // Actualizar HUD
+    const pObj = PERIODOS_OBJETIVO[nivel];
+    document.getElementById('lbl-nivel').textContent = `NIVEL ${nivel}/${TOTAL_NIVELES}`;
+    document.getElementById('lbl-vidas').textContent = '❤️'.repeat(Math.max(0, vidas)) || '💀';
+    document.getElementById('lbl-tiempo').textContent = `${Math.ceil(tiempo)} s`;
+    document.getElementById('lbl-puntos').textContent = `${Math.round(puntosAprox)}/700`;
+    document.getElementById('val-r').textContent = `${radio.toFixed(1)} m`;
+    document.getElementById('val-t').textContent = `${periodo.toFixed(2)} s`;
+    document.getElementById('val-w').textContent = `${omega.toFixed(3)} rad/s`;
+    document.getElementById('val-v').textContent = `${vel.toFixed(2)} m/s`;
+
+    const rOk = Math.abs(radio - RADIO_OBJETIVO) <= TOL_RADIO;
+    const tOk = Math.abs(periodo - pObj) <= TOL_PERIODO;
+    const elR = document.getElementById('obj-r');
+    const elT = document.getElementById('obj-t');
+    elR.className = rOk ? 'ok' : 'bad';
+    elR.textContent = `● Radio: ${RADIO_OBJETIVO - TOL_RADIO}-${RADIO_OBJETIVO + TOL_RADIO} m`;
+    elT.className = tOk ? 'ok' : 'bad';
+    elT.textContent = `● Periodo: ${pObj - TOL_PERIODO}-${pObj + TOL_PERIODO} s`;
+  }
+
+  dibujar();
+  requestAnimationFrame(loop);
+}
+
+function dibujar() {
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2 - 12;
+  const escala = Math.min(canvas.width, canvas.height) / 330;
+
+  ctx.fillStyle = '#030612';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Estrellas
+  ctx.fillStyle = '#dbe7ff';
+  estrellas.forEach(s => ctx.fillRect(s.x * canvas.width, s.y * canvas.height, s.r, s.r));
+
+  // Orbita objetivo y ventana
+  const rObjPx = RADIO_OBJETIVO * escala;
+  ctx.strokeStyle = '#325a82'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, rObjPx, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.strokeStyle = '#46eb8c'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(cx, cy, rObjPx, -Math.PI / 2 - 0.35, -Math.PI / 2 + 0.35); ctx.stroke();
+
+  // Orbita actual
+  ctx.strokeStyle = '#3ce1ff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, radio * escala, 0, Math.PI * 2); ctx.stroke();
+
+  // Planeta
+  ctx.fillStyle = '#2878dc';
+  ctx.beginPath(); ctx.arc(cx, cy, 32 * escala, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#46eb8c';
+  ctx.beginPath(); ctx.arc(cx - 10 * escala, cy - 5 * escala, 9 * escala, 0, Math.PI * 2); ctx.fill();
+
+  // Estacion
+  const estY = cy - rObjPx;
+  ctx.fillStyle = '#f5f8ff';
+  ctx.fillRect(cx - 12, estY - 6, 24, 12);
+  ctx.fillStyle = '#3ce1ff';
+  ctx.fillRect(cx - 32, estY - 3, 18, 6);
+  ctx.fillRect(cx + 14, estY - 3, 18, 6);
+
+  // Asteroides
+  asteroides.forEach(a => {
+    const ax = cx + a.rad * escala * Math.cos(a.ang);
+    const ay = cy + a.rad * escala * Math.sin(a.ang);
+    ctx.fillStyle = '#7a8296';
+    ctx.beginPath(); ctx.arc(ax, ay, a.tam * escala * 0.7, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Nave
+  const nx = cx + radio * escala * Math.cos(angulo);
+  const ny = cy + radio * escala * Math.sin(angulo);
+  ctx.save();
+  ctx.translate(nx, ny);
+  ctx.rotate(angulo + Math.PI / 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, -8); ctx.lineTo(-10, 8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3ce1ff';
+  ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
