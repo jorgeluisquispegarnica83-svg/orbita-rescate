@@ -6,73 +6,88 @@
 <title>Órbita de Rescate - Simulador MCU</title>
 <style>
   * { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-  body {
-    margin: 0; background: #030612; color: #f5f8ff;
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #030612; color: #f5f8ff;
     font-family: system-ui, -apple-system, sans-serif;
-    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+    overflow: hidden; position: fixed; inset: 0;
+    display: flex; flex-direction: column;
   }
   #hud-superior {
+    flex: 0 0 auto;
     display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 12px; background: #0a1126; border-bottom: 1px solid #325a82;
-    font-size: 0.82rem; font-weight: 700;
+    padding: 6px 10px; background: #0a1126; border-bottom: 1px solid #325a82;
+    font-size: 0.78rem; font-weight: 700;
   }
-  .badge { padding: 3px 8px; border-radius: 8px; background: #0f285a; color: #3ce1ff; }
+  .badge { padding: 2px 7px; border-radius: 7px; background: #0f285a; color: #3ce1ff; }
   #telemetria {
+    flex: 0 0 auto;
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
-    padding: 6px 10px; background: #070d20; font-family: monospace;
-    font-size: 0.75rem; text-align: center; border-bottom: 1px solid #1e3554;
+    padding: 4px 8px; background: #070d20; font-family: monospace;
+    font-size: 0.72rem; text-align: center; border-bottom: 1px solid #1e3554;
   }
-  #telemetria div span { display: block; color: #91a0b9; font-size: 0.65rem; }
+  #telemetria div span { display: block; color: #91a0b9; font-size: 0.62rem; }
   #objetivos {
-    display: flex; justify-content: space-around; padding: 5px 10px;
-    background: #0a1126; font-size: 0.78rem; border-bottom: 1px solid #1e3554;
+    flex: 0 0 auto;
+    display: flex; justify-content: space-around; padding: 4px 8px;
+    background: #0a1126; font-size: 0.75rem; border-bottom: 1px solid #1e3554;
   }
   .ok { color: #46eb8c; font-weight: bold; }
   .bad { color: #f5465a; font-weight: bold; }
-  #contenedor-canvas { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; }
-  canvas { width: 100%; height: 100%; display: block; }
+
+  /* min-height: 0 evita que el canvas empuje los botones fuera de pantalla */
+  #contenedor-canvas {
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+    position: relative; width: 100%;
+  }
+  canvas#juego { width: 100%; height: 100%; display: block; }
+
   #mensaje-barra {
-    position: absolute; bottom: 8px; left: 10px; right: 10px;
-    background: rgba(8, 15, 32, 0.88); border: 1px solid #325a82;
-    border-radius: 10px; padding: 6px 12px; font-size: 0.8rem; text-align: center; color: #ffdc46;
+    position: absolute; bottom: 6px; left: 8px; right: 8px;
+    background: rgba(8, 15, 32, 0.9); border: 1px solid #325a82;
+    border-radius: 8px; padding: 5px 10px; font-size: 0.75rem;
+    text-align: center; color: #ffdc46; pointer-events: none;
   }
   #controles {
-    display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px;
-    padding: 10px; background: #0a1126; border-top: 1px solid #325a82; height: 145px;
+    flex: 0 0 132px;
+    display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 7px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: #0a1126; border-top: 1px solid #325a82;
   }
-  .col-btn { display: flex; flex-direction: column; gap: 8px; }
+  .col-btn { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
   button {
-    flex: 1; border: 2px solid #325a82; border-radius: 14px;
-    background: #0f1d42; color: #f5f8ff; font-weight: 700; font-size: 0.92rem;
+    flex: 1; min-height: 0; border: 2px solid #325a82; border-radius: 12px;
+    background: #0f1d42; color: #f5f8ff; font-weight: 700; font-size: 0.85rem;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 2px;
   }
-  button small { font-size: 0.68rem; font-weight: 400; color: #91a0b9; }
+  button small { font-size: 0.64rem; font-weight: 400; color: #91a0b9; }
   button:active, button.activo { background: #2878dc; border-color: #3ce1ff; transform: scale(0.97); }
-  .btn-acoplar { background: #145c38; border-color: #46eb8c; color: #46eb8c; font-size: 1rem; }
-  .btn-graf { background: #2a1859; border-color: #b464ff; color: #e0baff; font-size: 0.8rem; }
+  .btn-acoplar { background: #145c38; border-color: #46eb8c; color: #46eb8c; font-size: 0.92rem; }
+  .btn-graf { background: #2a1859; border-color: #b464ff; color: #e0baff; font-size: 0.78rem; }
 
-  /* Pantalla superpuesta (Menu / Resultado / Graficas) */
+  /* Pantallas superpuestas */
   .overlay {
-    position: absolute; inset: 0; background: rgba(3, 6, 18, 0.94);
+    position: fixed; inset: 0; background: rgba(3, 6, 18, 0.96);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 18px; text-align: center; z-index: 10; overflow-y: auto;
+    padding: 18px; text-align: center; z-index: 50; overflow-y: auto;
   }
   .oculto { display: none !important; }
-  h1 { color: #ffdc46; margin: 0 0 6px; font-size: 1.7rem; }
-  h2 { color: #3ce1ff; margin: 0 0 10px; font-size: 1.2rem; }
+  h1 { color: #ffdc46; margin: 0 0 6px; font-size: 1.6rem; }
+  h2 { color: #3ce1ff; margin: 0 0 10px; font-size: 1.1rem; }
   .btn-grande {
-    width: 85%; max-width: 320px; padding: 15px; margin: 8px 0;
-    border-radius: 16px; font-size: 1.1rem; flex: none;
+    width: 88%; max-width: 320px; padding: 14px; margin: 8px 0;
+    border-radius: 14px; font-size: 1rem; flex: none;
   }
   .grid-graficas {
-    display: grid; grid-template-columns: 1fr; gap: 12px;
-    width: 100%; max-width: 500px; margin: 10px 0;
+    display: grid; grid-template-columns: 1fr; gap: 10px;
+    width: 100%; max-width: 500px; margin: 8px 0;
   }
   .card-graf {
-    background: #0a1126; border: 1px solid #325a82; border-radius: 12px; padding: 8px;
+    background: #0a1126; border: 1px solid #325a82; border-radius: 10px; padding: 8px;
   }
-  .card-graf p { margin: 0 0 6px; font-size: 0.78rem; color: #3ce1ff; font-weight: bold; }
-  .card-graf canvas { height: 140px; width: 100%; background: #050a1a; border-radius: 8px; }
+  .card-graf p { margin: 0 0 6px; font-size: 0.75rem; color: #3ce1ff; font-weight: bold; }
+  .card-graf canvas { height: 130px; width: 100%; background: #050a1a; border-radius: 6px; display: block; }
 </style>
 </head>
 <body>
@@ -99,51 +114,6 @@
 <div id="contenedor-canvas">
   <canvas id="juego"></canvas>
   <div id="mensaje-barra">Ajusta la órbita y acopla la nave en la ventana verde.</div>
-
-  <!-- MENU PRINCIPAL -->
-  <div id="pantalla-menu" class="overlay">
-    <h1>ÓRBITA DE RESCATE</h1>
-    <h2>Simulador Móvil de Movimiento Circular Uniforme</h2>
-    <p style="color:#91a0b9; font-size:0.9rem; max-width:340px;">
-      Ajusta el radio orbital y el periodo para igualar la órbita de la Estación Espacial sin chocar con asteroides.
-    </p>
-    <button class="btn-grande" style="background:#1c64c8; border-color:#3ce1ff;" onclick="iniciarJuego()">JUGAR AHORA</button>
-  </div>
-
-  <!-- PANTALLA RESULTADOS -->
-  <div id="pantalla-resultado" class="overlay oculto">
-    <h1 id="res-titulo">¡NIVEL COMPLETADO!</h1>
-    <p id="res-subtitulo" style="font-size:1rem; margin:4px 0;"></p>
-    <h2 id="res-puntos" style="color:#ffdc46; margin:12px 0;">PUNTUACIÓN: 0</h2>
-    <p id="res-detalle" style="color:#91a0b9; font-size:0.85rem;"></p>
-    <button class="btn-grande btn-graf" onclick="abrirGraficas()">📊 GRAFICAR FUNCIONES (DATOS FINALES)</button>
-    <button class="btn-grande btn-acoplar" id="btn-siguiente" onclick="siguienteAccionResultado()">CONTINUAR</button>
-  </div>
-
-  <!-- PANTALLA GRAFICAS -->
-  <div id="pantalla-graficas" class="overlay oculto" style="justify-content:flex-start;">
-    <h2 style="margin-top:6px;">ANÁLISIS GRÁFICO MCU (DATOS FINALES)</h2>
-    <p id="graf-resumen" style="font-size:0.75rem; color:#ffdc46; margin:0 0 8px;"></p>
-    <div class="grid-graficas">
-      <div class="card-graf">
-        <p>1. Velocidad Angular ω(T) = 2π / T</p>
-        <canvas id="g-omega"></canvas>
-      </div>
-      <div class="card-graf">
-        <p>2. Velocidad Tangencial v(r) = ω_final · r</p>
-        <canvas id="g-vel"></canvas>
-      </div>
-      <div class="card-graf">
-        <p>3. Proyección Armónica x(t)=r·cos(ωt) y y(t)=r·sin(ωt)</p>
-        <canvas id="g-arm"></canvas>
-      </div>
-      <div class="card-graf">
-        <p>4. Telemetría Real de Partida: r(t) [Morado] y v(t) [Verde]</p>
-        <canvas id="g-hist"></canvas>
-      </div>
-    </div>
-    <button class="btn-grande" style="background:#1c64c8;" onclick="cerrarGraficas()">VOLVER</button>
-  </div>
 </div>
 
 <div id="controles">
@@ -161,11 +131,56 @@
   </div>
 </div>
 
+<!-- MENU PRINCIPAL -->
+<div id="pantalla-menu" class="overlay">
+  <h1>ÓRBITA DE RESCATE</h1>
+  <h2>Simulador Móvil de Movimiento Circular Uniforme</h2>
+  <p style="color:#91a0b9; font-size:0.88rem; max-width:330px;">
+    Ajusta el radio orbital y el periodo para igualar la órbita de la Estación Espacial sin chocar con asteroides.
+  </p>
+  <button class="btn-grande" style="background:#1c64c8; border-color:#3ce1ff;" onclick="iniciarJuego()">JUGAR AHORA</button>
+</div>
+
+<!-- PANTALLA RESULTADOS -->
+<div id="pantalla-resultado" class="overlay oculto">
+  <h1 id="res-titulo">¡NIVEL COMPLETADO!</h1>
+  <p id="res-subtitulo" style="font-size:0.95rem; margin:4px 0;"></p>
+  <h2 id="res-puntos" style="color:#ffdc46; margin:10px 0;">PUNTUACIÓN: 0</h2>
+  <p id="res-detalle" style="color:#91a0b9; font-size:0.82rem;"></p>
+  <button class="btn-grande btn-graf" onclick="abrirGraficas()">📊 GRAFICAR FUNCIONES (DATOS FINALES)</button>
+  <button class="btn-grande btn-acoplar" id="btn-siguiente" onclick="siguienteAccionResultado()">CONTINUAR</button>
+</div>
+
+<!-- PANTALLA GRAFICAS -->
+<div id="pantalla-graficas" class="overlay oculto" style="justify-content:flex-start;">
+  <h2 style="margin-top:4px;">ANÁLISIS GRÁFICO MCU (DATOS FINALES)</h2>
+  <p id="graf-resumen" style="font-size:0.74rem; color:#ffdc46; margin:0 0 8px;"></p>
+  <div class="grid-graficas">
+    <div class="card-graf">
+      <p>1. Velocidad Angular ω(T) = 2π / T</p>
+      <canvas id="g-omega"></canvas>
+    </div>
+    <div class="card-graf">
+      <p>2. Velocidad Tangencial v(r) = ω_final · r</p>
+      <canvas id="g-vel"></canvas>
+    </div>
+    <div class="card-graf">
+      <p>3. Proyección Armónica x(t)=r·cos(ωt) y y(t)=r·sin(ωt)</p>
+      <canvas id="g-arm"></canvas>
+    </div>
+    <div class="card-graf">
+      <p>4. Telemetría Real de Partida: r(t) [Morado] y v(t) [Verde]</p>
+      <canvas id="g-hist"></canvas>
+    </div>
+  </div>
+  <button class="btn-grande" style="background:#1c64c8;" onclick="cerrarGraficas()">VOLVER</button>
+</div>
+
 <script>
+const contCanvas = document.getElementById('contenedor-canvas');
 const canvas = document.getElementById('juego');
 const ctx = canvas.getContext('2d');
 
-// Audio sintetizado Web Audio API (sin archivos externos)
 let audioCtx = null;
 function sonar(freq, tipo, dur) {
   try {
@@ -256,10 +271,9 @@ function intentarAcoplamiento() {
   const rOk = Math.abs(radio - RADIO_OBJETIVO) <= TOL_RADIO;
   const tOk = Math.abs(periodo - pObj) <= TOL_PERIODO;
 
-  // Estacion en -pi/2 (arriba)
   const navX = radio * Math.cos(angulo);
   const navY = radio * Math.sin(angulo);
-  const dist = Math.hypot(navX - 0, navY - (-RADIO_OBJETIVO));
+  const dist = Math.hypot(navX, navY + RADIO_OBJETIVO);
 
   if (rOk && tOk && dist < 32) {
     sonar(660, 'triangle', 0.4);
@@ -305,7 +319,6 @@ function siguienteAccionResultado() {
   }
 }
 
-// ---------------- GRAFICAS DE FUNCIONES ----------------
 function abrirGraficas() {
   if (estado === 'MENU') return;
   estadoPrevio = estado;
@@ -370,7 +383,6 @@ function renderizarGraficas() {
   }
 }
 
-// ---------------- BUCLE DE SIMULACION ----------------
 let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -420,7 +432,6 @@ function loop(now) {
       }
     });
 
-    // Actualizar HUD
     const pObj = PERIODOS_OBJETIVO[nivel];
     document.getElementById('lbl-nivel').textContent = `NIVEL ${nivel}/${TOTAL_NIVELES}`;
     document.getElementById('lbl-vidas').textContent = '❤️'.repeat(Math.max(0, vidas)) || '💀';
@@ -446,20 +457,23 @@ function loop(now) {
 }
 
 function dibujar() {
-  canvas.width = canvas.clientWidth;
-  canvas.height = canvas.clientHeight;
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2 - 12;
-  const escala = Math.min(canvas.width, canvas.height) / 330;
+  const w = contCanvas.clientWidth;
+  const h = contCanvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  const cx = w / 2;
+  const cy = h / 2 - 14;
+  const escala = Math.min(w, h) / 340;
 
   ctx.fillStyle = '#030612';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, w, h);
 
-  // Estrellas
   ctx.fillStyle = '#dbe7ff';
-  estrellas.forEach(s => ctx.fillRect(s.x * canvas.width, s.y * canvas.height, s.r, s.r));
+  estrellas.forEach(s => ctx.fillRect(s.x * w, s.y * h, s.r, s.r));
 
-  // Orbita objetivo y ventana
   const rObjPx = RADIO_OBJETIVO * escala;
   ctx.strokeStyle = '#325a82'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(cx, cy, rObjPx, 0, Math.PI * 2); ctx.stroke();
@@ -467,17 +481,14 @@ function dibujar() {
   ctx.strokeStyle = '#46eb8c'; ctx.lineWidth = 6;
   ctx.beginPath(); ctx.arc(cx, cy, rObjPx, -Math.PI / 2 - 0.35, -Math.PI / 2 + 0.35); ctx.stroke();
 
-  // Orbita actual
   ctx.strokeStyle = '#3ce1ff'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(cx, cy, radio * escala, 0, Math.PI * 2); ctx.stroke();
 
-  // Planeta
   ctx.fillStyle = '#2878dc';
   ctx.beginPath(); ctx.arc(cx, cy, 32 * escala, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#46eb8c';
   ctx.beginPath(); ctx.arc(cx - 10 * escala, cy - 5 * escala, 9 * escala, 0, Math.PI * 2); ctx.fill();
 
-  // Estacion
   const estY = cy - rObjPx;
   ctx.fillStyle = '#f5f8ff';
   ctx.fillRect(cx - 12, estY - 6, 24, 12);
@@ -485,7 +496,6 @@ function dibujar() {
   ctx.fillRect(cx - 32, estY - 3, 18, 6);
   ctx.fillRect(cx + 14, estY - 3, 18, 6);
 
-  // Asteroides
   asteroides.forEach(a => {
     const ax = cx + a.rad * escala * Math.cos(a.ang);
     const ay = cy + a.rad * escala * Math.sin(a.ang);
@@ -493,7 +503,6 @@ function dibujar() {
     ctx.beginPath(); ctx.arc(ax, ay, a.tam * escala * 0.7, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Nave
   const nx = cx + radio * escala * Math.cos(angulo);
   const ny = cy + radio * escala * Math.sin(angulo);
   ctx.save();
